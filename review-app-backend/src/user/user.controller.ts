@@ -2,8 +2,13 @@ import { Controller, Get, Patch, Req, Body, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { UpdateUserDto } from './dto/update-user-dto';
+import * as admin from 'firebase-admin';
 
-// Extend Express Request interface to include 'user'
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+const firestore = admin.firestore();
+
 declare module 'express-serve-static-core' {
   interface Request {
     user?: any;
@@ -20,19 +25,31 @@ interface AuthUser {
 export class UserController {
   @UseGuards(FirebaseAuthGuard)
   @Get('me')
-  getMe(@Req() req: Request) {
+  async getMe(@Req() req: Request) {
     const user = req.user as AuthUser;
+
+    const docSnap = await firestore.collection('users').doc(user.uid).get();
+    const data = docSnap.exists ? (docSnap.data() as { name?: string }) : {};
+
     return {
       uid: user.uid,
       email: user.email,
-      name: user.name ?? null,
+      name: data?.name ?? null,
     };
   }
 
   @UseGuards(FirebaseAuthGuard)
   @Patch('me')
-  updateMe(@Req() req: Request, @Body() body: UpdateUserDto) {
+  async updateMe(@Req() req: Request, @Body() body: UpdateUserDto) {
     const user = req.user as AuthUser;
+
+    await firestore.collection('users').doc(user.uid).set(
+      {
+        name: body.name,
+        email: user.email,
+      },
+      { merge: true },
+    );
 
     return {
       uid: user.uid,
