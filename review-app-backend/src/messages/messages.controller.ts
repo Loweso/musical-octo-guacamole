@@ -1,4 +1,14 @@
-import { Controller, Post, Get, Body, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Patch,
+  Post,
+  Get,
+  Delete,
+  Body,
+  Req,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { MessagesService } from './messages.service';
 import { FirebaseAuthGuard } from 'src/auth/firebase-auth.guard';
 import { MessageDto } from './dto/messages.dto';
@@ -20,12 +30,12 @@ if (!admin.apps.length) {
 }
 const firestore = admin.firestore();
 
-@Controller()
+@Controller('messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   @UseGuards(FirebaseAuthGuard)
-  @Post('messages')
+  @Post()
   async addMessage(@Req() req: Request, @Body() body: MessageDto) {
     const user = req.user as AuthUser;
     const messageRef = firestore
@@ -45,7 +55,7 @@ export class MessagesController {
   }
 
   @UseGuards(FirebaseAuthGuard)
-  @Get('messages')
+  @Get()
   async getMessages(@Req() req: Request) {
     const user = req.user as AuthUser;
 
@@ -58,5 +68,53 @@ export class MessagesController {
 
     const messages = snapshot.docs.map((doc) => doc.data() as Message);
     return messages;
+  }
+
+  @UseGuards(FirebaseAuthGuard)
+  @Patch(':id')
+  async updateMessage(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: MessageDto,
+  ) {
+    const user = req.user as AuthUser;
+    const messageRef = firestore
+      .collection('userMessages')
+      .doc(user.uid)
+      .collection('messages')
+      .doc(id);
+
+    const doc = await messageRef.get();
+    if (!doc.exists) {
+      throw new Error('Message not found');
+    }
+
+    const updated = {
+      content: body.content,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await messageRef.update(updated);
+    return { id, ...updated };
+  }
+
+  @UseGuards(FirebaseAuthGuard)
+  @Delete(':id')
+  async deleteMessage(@Req() req: Request, @Param('id') id: string) {
+    const user = req.user as AuthUser;
+
+    const messageRef = firestore
+      .collection('userMessages')
+      .doc(user.uid)
+      .collection('messages')
+      .doc(id);
+
+    const doc = await messageRef.get();
+    if (!doc.exists) {
+      return { success: false, message: 'Message not found' };
+    }
+
+    await messageRef.delete();
+    return { success: true, message: 'Message deleted' };
   }
 }
